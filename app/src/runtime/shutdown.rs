@@ -13,7 +13,10 @@ use bevy::{
 };
 #[cfg(feature = "acceptance")]
 use render_scene::TransparentSortMetrics;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::{
+    io::Write,
+    sync::{Arc, Mutex, PoisonError},
+};
 
 #[cfg(not(target_arch = "wasm32"))]
 use client_runtime::shutdown::{ShutdownWatchdog, begin_bounded_shutdown};
@@ -74,13 +77,23 @@ fn capture_terminal_cause(
     if !exits.read().any(AppExit::is_error) {
         return;
     }
-    let Some(error) = fatal_error
+    let error = fatal_error
         .and_then(|fatal_error| fatal_error.0.clone())
-        .filter(|error| !error.is_empty())
-    else {
-        return;
-    };
-    cause.record(error);
+        .filter(|error| !error.is_empty());
+    if let Some(error) = error {
+        cause.record(error.clone());
+        let _ = writeln!(
+            diagnostics::console::stderr(),
+            "CINNABAR_TERMINAL_CAUSE {error}"
+        );
+    } else {
+        let message = cause.exit_message();
+        let _ = writeln!(
+            diagnostics::console::stderr(),
+            "CINNABAR_TERMINAL_CAUSE {message}"
+        );
+    }
+    diagnostics::console::flush_before_exit();
 }
 
 /// Ends the app after a terminal GPU error so the crash window names its cause and offers
